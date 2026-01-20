@@ -18,6 +18,9 @@ RUN curl -fsSLo - https://codeberg.org/fabiscafe/game-devices-udev/archive/0.25.
   install -Dpm0644 -t /out/shared/usr/lib/udev/rules.d/ /tmp/game-devices-udev/*.rules && \
   curl -fsSLo /out/shared/usr/lib/udev/rules.d/70-u2f.rules https://raw.githubusercontent.com/Yubico/libfido2/refs/heads/main/udev/70-u2f.rules
 
+# Create extensions directory for sysext
+RUN mkdir -p /out/shared/usr/lib/extensions
+
 FROM scratch AS ctx
 COPY /system_files/shared /system_files/shared/
 COPY /bluefin-branding/system_files /system_files/bluefin
@@ -25,3 +28,8 @@ COPY /system_files/bluefin /system_files/bluefin
 
 COPY --from=build /out/shared /system_files/shared
 COPY --from=build /out/bluefin /system_files/bluefin
+
+# Copy containerd sysext (amd64 - adjust if you need multi-arch in the common image itself)
+# The sysext-artifacts directory is created by the GitHub Actions workflow
+COPY sysext-artifacts/amd64/containerd.raw /system_files/shared/usr/lib/extensions/containerd.raw
+

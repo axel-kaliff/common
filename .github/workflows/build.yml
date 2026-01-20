@@ -16,15 +16,52 @@ on:
       - '.gitignore'
   merge_group:
   workflow_dispatch:
+    inputs:
+      containerd_version:
+        description: 'Containerd version to build'
+        required: false
+        default: '1.7.24'
 
 env:
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
   IMAGE_NAME: common
 
 jobs:
+  build_sysext:
+    name: Build containerd sysext
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools curl
+
+      - name: Build containerd sysext
+        run: |
+          chmod +x sysext/containerd/build-containerd.sh
+          CONTAINERD_VERSION="${{ github.event.inputs.containerd_version || '1.7.24' }}" \
+          ARCH="${{ matrix.arch }}" \
+          OUTPUT_DIR="./sysext-output" \
+          ./sysext/containerd/build-containerd.sh
+
+      - name: Upload sysext artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: containerd-sysext-${{ matrix.arch }}
+          path: sysext-output/
+          retention-days: 1
+
   build_push:
     name: Build and push image
     runs-on: ubuntu-latest
+    needs: build_sysext
     permissions:
       contents: read
       packages: write
@@ -35,6 +72,18 @@ jobs:
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
         with:
           submodules: recursive
+
+      - name: Download amd64 sysext
+        uses: actions/download-artifact@v4
+        with:
+          name: containerd-sysext-amd64
+          path: sysext-artifacts/amd64/
+
+      - name: Download arm64 sysext
+        uses: actions/download-artifact@v4
+        with:
+          name: containerd-sysext-arm64
+          path: sysext-artifacts/arm64/
 
       - name: Generate tags
         id: generate-tags
@@ -58,6 +107,7 @@ jobs:
         with:
           containerfiles: |
             ./Containerfile
+          context: .
           image: ${{ env.IMAGE_NAME }}
           tags: |
             ${{ steps.generate-tags.outputs.alias_tags }}
